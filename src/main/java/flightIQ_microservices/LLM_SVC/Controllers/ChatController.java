@@ -14,7 +14,7 @@ public class ChatController {
         this.chatClientBuilder = builder;
     }
 
-    @GetMapping("/")
+    @GetMapping("/test")
     public String home(@RequestParam String systemPrompt, @RequestParam String userMessage) {
         ChatClient chatClient = chatClientBuilder.defaultSystem(systemPrompt).build();
         return chatClient.prompt()
