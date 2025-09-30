@@ -1,26 +1,33 @@
 package flightIQ_microservices.LLM_SVC.Controllers;
 
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 @RestController
+@RequestMapping("/chat")
 public class ChatController {
 
-    private final ChatClient.Builder chatClientBuilder;
+    private final ChatClient chatClient;
 
-    public ChatController(ChatClient.Builder builder) {
-        this.chatClientBuilder = builder;
+    @Autowired
+    public ChatController(ChatClient chatClient) {
+        this.chatClient = chatClient;
     }
 
-    @GetMapping("/test")
-    public String home(@RequestParam String systemPrompt, @RequestParam String userMessage) {
-        ChatClient chatClient = chatClientBuilder.defaultSystem(systemPrompt).build();
-        return chatClient.prompt()
+    @PostMapping
+    public Map<String, String> chat(@RequestBody Map<String, String> payload) {
+        String systemPrompt = payload.getOrDefault("systemPrompt", "You are a helpful assistant.");
+        String userMessage = payload.getOrDefault("userMessage", "");
+
+        String response = chatClient.prompt()
+                .system(systemPrompt)
                 .user(userMessage)
                 .call()
                 .content();
-    }
 
+        return Map.of("response", response);
+    }
 }
