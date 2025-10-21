@@ -1,0 +1,12 @@
+# Ignore unnecessary files
+.git
+.gitignore
+.idea/
+*.iml
+README.md
+
+!Dockerfile
+!pom.xml
+!src/
+!target/
+!deploy-to-gcp.sh

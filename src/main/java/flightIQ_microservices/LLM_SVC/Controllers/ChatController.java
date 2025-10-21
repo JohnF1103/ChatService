@@ -1,71 +1,94 @@
-package flightIQ_microservices.LLM_SVC.Controllers;
+package flightIQ_microservices.LLM_SVC;
 
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.http.ResponseEntity;
+import org.springframework.web.client.RestTemplate;
+
+import java.util.HashMap;
 import java.util.Map;
 
 @RestController
 @RequestMapping("/chat")
 public class ChatController {
 
-    private final ChatClient chatClient;
-    private final WeatherController weatherController;
+    @Value("${spring.ai.ollama.base-url:http://host.docker.internal:11434}")
+    private String ollamaBaseUrl;
 
-    @Autowired
-    public ChatController(ChatClient chatClient, WeatherController weatherController) {
-        this.chatClient = chatClient;
-        this.weatherController = weatherController;
-    }
+    @Value("${LLM_API_URL:}")
+    private String llmApiUrl;
+
+    @Value("${OPENAI_API_KEY:}")
+    private String openAiApiKey;
+
+    private final RestTemplate restTemplate = new RestTemplate();
 
     @PostMapping
     public Map<String, String> chat(@RequestBody Map<String, String> payload) {
-        String defaultPrompt = """
-            You are an expert aviation assistant. 
-            You can analyze and interpret METAR and TAF reports, runway conditions, 
-            and aircraft performance. 
-            When given weather data, always analyze it directly. 
-            Never respond with 'I don’t have real-time access.' 
-            Instead, use the provided METAR or other data to answer accurately.
-            """;
-
-        String systemPrompt = payload.getOrDefault("systemPrompt", defaultPrompt);
-        String userMessage  = payload.getOrDefault("userMessage", "");
-        String enrichedMessage = userMessage;
+        String userMessage = payload.get("userMessage");
+        Map<String, String> response = new HashMap<>();
 
         try {
-            // Only handle weather questions simply
-            if (userMessage.toLowerCase().contains("weather at")) {
-                String[] parts = userMessage.split(" ");
-                String icao = parts[parts.length - 1].toUpperCase().trim();
+            // If OPENAI_API_KEY is set, use OpenAI endpoint
+            if (openAiApiKey != null && !openAiApiKey.isEmpty()) {
+                String apiUrl = (llmApiUrl != null && !llmApiUrl.isEmpty())
+                        ? llmApiUrl
+                        : "https://api.openai.com/v1/chat/completions";
 
-                ResponseEntity<String> response = weatherController.getWeather(icao);
-                if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                    enrichedMessage = """
-                        %s
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+                headers.setBearerAuth(openAiApiKey);
 
-                        You have been provided with live METAR weather data for %s.
-                        Analyze and summarize the conditions in plain English for a pilot.
+                String requestBody = """
+                        {
+                          "model": "gpt-4o-mini",
+                          "messages": [{"role": "user", "content": "%s"}]
+                        }
+                        """.formatted(userMessage);
 
-                        METAR data: %s
-                        """.formatted(userMessage, icao, response.getBody());
-                } else {
-                    enrichedMessage = userMessage + "\n(Note: Unable to fetch weather for " + icao + ")";
+                HttpEntity<String> entity = new HttpEntity<>(requestBody, headers);
+                ResponseEntity<Map> aiResponse = restTemplate.exchange(apiUrl, HttpMethod.POST, entity, Map.class);
+
+                Map<String, Object> body = aiResponse.getBody();
+                if (body != null && body.containsKey("choices")) {
+                    var choices = (java.util.List<Map<String, Object>>) body.get("choices");
+                    if (!choices.isEmpty()) {
+                        Map<String, Object> msg = (Map<String, Object>) choices.get(0).get("message");
+                        response.put("response", msg.get("content").toString());
+                        return response;
+                    }
                 }
+
+                response.put("response", "No content received from LLM.");
+                return response;
             }
 
-            // Call LLM
-            String result = chatClient.prompt()
-                    .system(systemPrompt)
-                    .user(enrichedMessage)
-                    .call()
-                    .content();
+            // Otherwise, fallback to local Ollama
+            String requestBody = """
+                    {
+                      "model": "llama3.2",
+                      "messages": [{"role": "user", "content": "%s"}]
+                    }
+                    """.formatted(userMessage);
 
-            return Map.of("response", result);
+            String url = ollamaBaseUrl + "/api/chat";
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            HttpEntity<String> entity = new HttpEntity<>(requestBody, headers);
+            ResponseEntity<Map> ollamaResponse = restTemplate.exchange(url, HttpMethod.POST, entity, Map.class);
+
+            Map<String, Object> body = ollamaResponse.getBody();
+            if (body != null && body.containsKey("message")) {
+                response.put("response", body.get("message").toString());
+            } else {
+                response.put("response", "No content received from Ollama backend.");
+            }
 
         } catch (Exception e) {
-            return Map.of("response", "Error processing request: " + e.getMessage());
+            response.put("response", "Error processing request: " + e.getMessage());
         }
+
+        return response;
     }
 }
