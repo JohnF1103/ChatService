@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ChatService UI</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 0;
+      padding: 20px;
+    }
+    #chat {
+      width: 90%;
+      max-width: 700px;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      background: #161b22;
+      padding: 20px;
+      overflow-y: auto;
+      height: 70vh;
+      box-shadow: 0 0 10px #0005;
+    }
+    .message {
+      margin: 10px 0;
+      line-height: 1.5;
+    }
+    .user {
+      color: #58a6ff;
+    }
+    .bot {
+      color: #8b949e;
+    }
+    #input-area {
+      width: 90%;
+      max-width: 700px;
+      display: flex;
+      margin-top: 15px;
+    }
+    #userMessage {
+      flex: 1;
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid #30363d;
+      background: #0d1117;
+      color: #c9d1d9;
+    }
+    button {
+      margin-left: 10px;
+      padding: 10px 20px;
+      background: #238636;
+      border: none;
+      color: white;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #2ea043;
+    }
+  </style>
+</head>
+<body>
+  <h1>ChatService</h1>
+  <div id="chat"></div>
+  <div id="input-area">
+    <input id="userMessage" type="text" placeholder="Type a message..." />
+    <button onclick="sendMessage()">Send</button>
+  </div>
+
+  <script>
+    const chatBox = document.getElementById("chat");
+    const input = document.getElementById("userMessage");
+    const endpoint = "http://localhost:8080/chat"; // or your Cloud Run URL
+
+    async function sendMessage() {
+      const userText = input.value.trim();
+      if (!userText) return;
+      appendMessage("You", userText, "user");
+      input.value = "";
+
+      try {
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userMessage: userText }),
+        });
+
+        if (!res.ok) throw new Error(`Error: ${res.status}`);
+        const data = await res.json();
+        appendMessage("Bot", data.response || "(no response)", "bot");
+      } catch (err) {
+        appendMessage("System", err.message, "bot");
+      }
+    }
+
+    function appendMessage(sender, text, cls) {
+      const msg = document.createElement("div");
+      msg.className = `message ${cls}`;
+      msg.innerHTML = `<strong>${sender}:</strong> ${text.replace(/\n/g, "<br>")}`;
+      chatBox.appendChild(msg);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") sendMessage();
+    });
+  </script>
+</body>
+</html>
